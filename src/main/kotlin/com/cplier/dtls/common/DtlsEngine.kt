@@ -7,7 +7,7 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.util.concurrent.BlockingQueue
 import java.util.concurrent.Executors
-import java.util.concurrent.LinkedTransferQueue
+import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 
 class DtlsEngine(private val rawTransport: DtlsHandlerTransport) {
@@ -27,7 +27,7 @@ class DtlsEngine(private val rawTransport: DtlsHandlerTransport) {
   }
 
   private var encTransport: DTLSTransport? = null
-  private val writeQueue: BlockingQueue<DatagramPacket> = LinkedTransferQueue()
+  private val writeQueue: BlockingQueue<DatagramPacket> = LinkedBlockingQueue()
   private val executor = Executors.newSingleThreadScheduledExecutor()
 
 
@@ -35,7 +35,9 @@ class DtlsEngine(private val rawTransport: DtlsHandlerTransport) {
     executor.scheduleAtFixedRate({
       encTransport?.let { it ->
         val buf = ByteArray(it.receiveLimit)
-        it.receive(buf, 0, buf.size, 1500 - 32)
+        val bytesRead = it.receive(buf, 0, buf.size, 1500 - 31)
+        // bad record mac issue: immediately read
+        read(DatagramPacket(Unpooled.copiedBuffer(buf, 0, bytesRead), rawTransport.getRemoteAddress()))
       }
     }, 0, 1, TimeUnit.SECONDS)
 
@@ -50,7 +52,7 @@ class DtlsEngine(private val rawTransport: DtlsHandlerTransport) {
       val buf = ByteArray(it.receiveLimit)
       while (rawTransport.hasPackets()) {
         // receive waitMills must be least that heart timeout
-        val bytesRead = it.receive(buf, 0, buf.size, 1500 - 32)
+        val bytesRead = it.receive(buf, 0, buf.size, 1500 - 31)
         if (bytesRead > 0) {
           packets.add(DatagramPacket(Unpooled.copiedBuffer(buf, 0, bytesRead), rawTransport.getRemoteAddress()))
         }
