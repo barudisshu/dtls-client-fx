@@ -289,8 +289,6 @@ private fun readX509FromString(data: String): Array<X509Certificate> {
 
 private fun readPrivateFromString(data: String): PrivateKey {
   // Read in the key into a String
-
-  // Read in the key into a String
   val pkcs8Lines = StringBuilder()
   val rdr = BufferedReader(StringReader(data))
   var line: String?
@@ -299,19 +297,13 @@ private fun readPrivateFromString(data: String): PrivateKey {
   }
 
   // Remove the "BEGIN" and "END" lines, as well as any whitespace
-
-
-  // Remove the "BEGIN" and "END" lines, as well as any whitespace
   var pkcs8Pem = pkcs8Lines.toString()
   pkcs8Pem = pkcs8Pem.replace("-----BEGIN PRIVATE KEY-----", "")
   pkcs8Pem = pkcs8Pem.replace("-----END PRIVATE KEY-----", "")
   pkcs8Pem = pkcs8Pem.replace("\\s+".toRegex(), "")
 
   // Base64 decode the result
-
-  // Base64 decode the result
   val pkcs8EncodedBytes = Base64.getDecoder().decode(pkcs8Pem)
-  // extract the private key
   // extract the private key
   val keySpec = PKCS8EncodedKeySpec(pkcs8EncodedBytes)
   val kf = KeyFactory.getInstance("RSA")
