@@ -36,7 +36,11 @@ object DtlsNettyClient {
       .option(ChannelOption.SO_SNDBUF, 1024 * 1024)
       .option(ChannelOption.SO_REUSEADDR, true)
       .option(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT)
-    val address = InetSocketAddress("127.0.0.1", 4740)
+
+    val host = System.getenv("HOST").takeUnless { it.isNullOrBlank() } ?: "127.0.0.1"
+    val port = System.getenv("PORT").takeUnless { it.isNullOrBlank() } ?: "4740"
+
+    val address = InetSocketAddress(host, port.toInt())
 
     poolMap = object : AbstractChannelPoolMap<InetSocketAddress, SimpleChannelPool>() {
       override fun newPool(key: InetSocketAddress?): SimpleChannelPool {
