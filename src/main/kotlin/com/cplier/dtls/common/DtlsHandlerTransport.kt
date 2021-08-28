@@ -55,11 +55,11 @@ class DtlsHandlerTransport : DatagramTransport {
         byteBuf.release()
         return bytesToRead
       } ?: kotlin.run {
-        return -1
+        return 0
       }
     } catch (e: InterruptedException) {
       Thread.currentThread().interrupt()
-      return -1
+      return 0
     }
   }
 

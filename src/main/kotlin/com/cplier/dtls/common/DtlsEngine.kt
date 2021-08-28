@@ -37,7 +37,8 @@ class DtlsEngine(private val rawTransport: DtlsHandlerTransport) {
         val buf = ByteArray(it.receiveLimit)
         val bytesRead = it.receive(buf, 0, buf.size, 1500 - 31)
         // bad record mac issue: immediately read
-        read(DatagramPacket(Unpooled.copiedBuffer(buf, 0, bytesRead), rawTransport.getRemoteAddress()))
+        if (bytesRead > 0)
+          read(DatagramPacket(Unpooled.copiedBuffer(buf, 0, bytesRead), rawTransport.getRemoteAddress()))
       }
     }, 0, 1, TimeUnit.SECONDS)
 
