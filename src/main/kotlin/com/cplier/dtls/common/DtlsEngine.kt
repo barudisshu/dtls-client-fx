@@ -35,7 +35,7 @@ class DtlsEngine(private val rawTransport: DtlsHandlerTransport) {
     executor.scheduleAtFixedRate({
       encTransport?.let { it ->
         val buf = ByteArray(it.receiveLimit)
-        val bytesRead = it.receive(buf, 0, buf.size, 1500 - 31)
+        val bytesRead = it.receive(buf, 0, buf.size, 100)
         // bad record mac issue: immediately read
         if (bytesRead > 0)
           read(DatagramPacket(Unpooled.copiedBuffer(buf, 0, bytesRead), rawTransport.getRemoteAddress()))
@@ -53,7 +53,7 @@ class DtlsEngine(private val rawTransport: DtlsHandlerTransport) {
       val buf = ByteArray(it.receiveLimit)
       while (rawTransport.hasPackets()) {
         // receive waitMills must be least that heart timeout
-        val bytesRead = it.receive(buf, 0, buf.size, 1500 - 31)
+        val bytesRead = it.receive(buf, 0, buf.size, 100)
         if (bytesRead > 0) {
           packets.add(DatagramPacket(Unpooled.copiedBuffer(buf, 0, bytesRead), rawTransport.getRemoteAddress()))
         }
