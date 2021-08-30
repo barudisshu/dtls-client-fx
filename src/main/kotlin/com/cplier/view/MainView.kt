@@ -8,7 +8,6 @@ import javafx.geometry.Pos
 import javafx.scene.control.ButtonBar
 import javafx.scene.layout.Priority
 import javafx.scene.paint.Color
-import kotlinx.coroutines.*
 import tornadofx.*
 
 class CertC(root: String? = null, pub: String? = null, pri: String? = null) {
@@ -68,9 +67,7 @@ class MainView : View("DTLS Client") {
             buttonbar {
               button("Send").action {
                 udpModel.commit {
-                  CoroutineScope(Dispatchers.IO).launch {
-                    doSend()
-                  }
+                  doSend()
                 }
               }
             }
@@ -143,14 +140,9 @@ class MainView : View("DTLS Client") {
   }
 
   // do send udp packet
-  private suspend fun doSend() {
+  private fun doSend() {
     val data = udpModel.item.packet
-    val job = CoroutineScope(Dispatchers.IO).async {
-      kotlin.runCatching {
-        DtlsNettyClient.send(data)
-      }
-    }
-    job.join()
+    DtlsNettyClient.send(data)
   }
 
   // load certificates of the client side

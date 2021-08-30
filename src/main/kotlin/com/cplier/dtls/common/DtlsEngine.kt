@@ -19,7 +19,7 @@ class DtlsEngine(private val rawTransport: DtlsHandlerTransport) {
       val byteBuf = packet.content()
       val readableBytes = byteBuf.readableBytes()
       LOGGER.trace("DtlsEngine write: $packet")
-      val buf = ByteArray(encTransport.sendLimit)
+      val buf = ByteArray(readableBytes)
       byteBuf.readBytes(buf, 0, readableBytes)
       byteBuf.release()
       encTransport.send(buf, 0, readableBytes)
