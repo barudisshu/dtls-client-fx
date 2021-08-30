@@ -2,7 +2,6 @@ package com.cplier.dtls.common
 
 import io.netty.buffer.Unpooled
 import io.netty.channel.Channel
-import io.netty.channel.ChannelFutureListener
 import io.netty.channel.socket.DatagramPacket
 import org.bouncycastle.tls.DatagramTransport
 import org.slf4j.Logger
@@ -28,8 +27,8 @@ class DtlsHandlerTransport : DatagramTransport {
       }
     }
 
-    private val RECV_BUFFER_SIZE = mtu - 31
-    private val SEND_BUFFER_SIZE = mtu - 31
+    private val RECV_BUFFER_SIZE = mtu - 32
+    private val SEND_BUFFER_SIZE = mtu - 32
   }
 
   private var channel: Channel? = null
