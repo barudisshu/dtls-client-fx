@@ -27,8 +27,12 @@ class DtlsHandlerTransport : DatagramTransport {
       }
     }
 
-    private val RECV_BUFFER_SIZE = mtu - 32
-    private val SEND_BUFFER_SIZE = mtu - 32
+    private const val MIN_IP_OVERHEAD = 20
+    private const val MAX_IP_OVERHEAD = MIN_IP_OVERHEAD + 64
+    private const val UDP_OVERHEAD = 8
+
+    private val RECV_BUFFER_SIZE = mtu - MIN_IP_OVERHEAD - UDP_OVERHEAD
+    private val SEND_BUFFER_SIZE = mtu - MAX_IP_OVERHEAD - UDP_OVERHEAD
   }
 
   private var channel: Channel? = null
