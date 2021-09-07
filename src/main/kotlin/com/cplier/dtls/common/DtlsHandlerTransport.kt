@@ -3,7 +3,9 @@ package com.cplier.dtls.common
 import io.netty.buffer.Unpooled
 import io.netty.channel.Channel
 import io.netty.channel.socket.DatagramPacket
+import org.bouncycastle.tls.AlertDescription
 import org.bouncycastle.tls.DatagramTransport
+import org.bouncycastle.tls.TlsFatalAlert
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.net.InetAddress
@@ -42,9 +44,18 @@ class DtlsHandlerTransport : DatagramTransport {
 
 
   override fun send(buf: ByteArray?, off: Int, len: Int) {
-    LOGGER.trace("send $len bytes to remoteAddress $remoteAddress")
-    val packet = DatagramPacket(Unpooled.copiedBuffer(buf, off, len), remoteAddress)
-    channel?.writeAndFlush(DtlsPacket(packet))
+    if (len > sendLimit) {
+      /*
+       * RFC 4347 4.1.1. "If the application attempts to send a record larger than the MTU,
+       * the DTLS implementation SHOULD generate an error, thus avoiding sending a packet
+       * which will be fragmented."
+       */
+      throw TlsFatalAlert(AlertDescription.internal_error)
+    } else {
+      LOGGER.trace("send $len bytes to remoteAddress $remoteAddress")
+      val packet = DatagramPacket(Unpooled.copiedBuffer(buf, off, len), remoteAddress)
+      channel?.writeAndFlush(DtlsPacket(packet))
+    }
   }
 
   override fun receive(buf: ByteArray?, off: Int, len: Int, waitMillis: Int): Int {
