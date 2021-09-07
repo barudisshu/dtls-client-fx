@@ -10,7 +10,7 @@ import org.slf4j.LoggerFactory
 import java.io.IOException
 import java.util.concurrent.BlockingQueue
 import java.util.concurrent.Executors
-import java.util.concurrent.LinkedTransferQueue
+import java.util.concurrent.LinkedBlockingQueue
 
 abstract class DtlsHandler : ChannelDuplexHandler() {
 
@@ -20,7 +20,7 @@ abstract class DtlsHandler : ChannelDuplexHandler() {
 
   internal class ChannelContext(val ctx: ChannelHandlerContext?, val promise: ChannelPromise?)
 
-  private val writeCtxQueue: BlockingQueue<ChannelContext> = LinkedTransferQueue()
+  private val writeCtxQueue: BlockingQueue<ChannelContext> = LinkedBlockingQueue()
   protected val rawTransport = DtlsHandlerTransport()
   private val engine: DtlsEngine = DtlsEngine(rawTransport)
 

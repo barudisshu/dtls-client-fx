@@ -10,7 +10,7 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.util.concurrent.BlockingQueue
-import java.util.concurrent.LinkedTransferQueue
+import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 
 class DtlsHandlerTransport : DatagramTransport {
@@ -38,7 +38,7 @@ class DtlsHandlerTransport : DatagramTransport {
   private var channel: Channel? = null
   private var remoteAddress: InetSocketAddress? = null
 
-  private val readQueue: BlockingQueue<DatagramPacket> = LinkedTransferQueue()
+  private val readQueue: BlockingQueue<DatagramPacket> = LinkedBlockingQueue()
 
 
   override fun send(buf: ByteArray?, off: Int, len: Int) {

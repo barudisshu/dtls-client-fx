@@ -8,8 +8,15 @@ import org.bouncycastle.tls.crypto.impl.bc.BcTlsCrypto
 import org.bouncycastle.util.Arrays
 import java.net.InetSocketAddress
 import java.security.SecureRandom
+import java.util.concurrent.atomic.AtomicBoolean
 
 class DtlsClient(internal val remoteAddress: InetSocketAddress) : DefaultTlsClient(BcTlsCrypto(SecureRandom())) {
+
+  private val handshakeAtomic = AtomicBoolean(false)
+
+  init {
+    handshakeAtomic.compareAndSet(true, false)
+  }
 
   override fun getSupportedVersions(): Array<ProtocolVersion> {
     return ProtocolVersion.DTLSv12.downTo(ProtocolVersion.DTLSv10)
@@ -25,6 +32,26 @@ class DtlsClient(internal val remoteAddress: InetSocketAddress) : DefaultTlsClie
 
   override fun getRenegotiationPolicy(): Int {
     return RenegotiationPolicy.ACCEPT
+  }
+
+
+  override fun notifyHandshakeBeginning() {
+    handshakeAtomic.compareAndSet(true, false)
+    super.notifyHandshakeBeginning()
+  }
+
+  override fun notifyHandshakeComplete() {
+    handshakeAtomic.compareAndSet(false, true)
+    super.notifyHandshakeComplete()
+  }
+
+
+  fun isHandshakeComplete(): Boolean {
+    return handshakeAtomic.get()
+  }
+
+  override fun shouldUseExtendedPadding(): Boolean {
+    return true
   }
 
   override fun getAuthentication(): TlsAuthentication {

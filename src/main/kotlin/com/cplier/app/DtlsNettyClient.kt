@@ -6,6 +6,7 @@ import io.netty.bootstrap.Bootstrap
 import io.netty.buffer.PooledByteBufAllocator
 import io.netty.buffer.Unpooled
 import io.netty.channel.Channel
+import io.netty.channel.ChannelFuture
 import io.netty.channel.ChannelId
 import io.netty.channel.ChannelOption
 import io.netty.channel.nio.NioEventLoopGroup
@@ -15,10 +16,12 @@ import io.netty.channel.pool.SimpleChannelPool
 import io.netty.channel.socket.DatagramPacket
 import io.netty.channel.socket.nio.NioDatagramChannel
 import io.netty.util.CharsetUtil
+import io.netty.util.concurrent.FutureListener
 import org.bouncycastle.util.encoders.Hex
 import java.net.InetSocketAddress
 import java.util.*
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.*
+import java.util.concurrent.atomic.AtomicBoolean
 
 object DtlsNettyClient {
 
@@ -28,6 +31,12 @@ object DtlsNettyClient {
   private val connections = mutableMapOf<ChannelId?, DtlsClient>()
   private val group = NioEventLoopGroup()
   private val bootstrap = Bootstrap()
+
+  private val executorService = Executors.newWorkStealingPool()
+  private val atomicInit = AtomicBoolean(false)
+  private val packetQueue: BlockingQueue<DatagramPacket> = LinkedBlockingQueue()
+  private val idleCheck = Executors.newSingleThreadScheduledExecutor()
+
 
   init {
     bootstrap.channel(NioDatagramChannel::class.java)
@@ -54,18 +63,33 @@ object DtlsNettyClient {
       }
     }
     channelPool = poolMap?.get(address)
+
+    idle()
   }
 
+  private fun idle() {
+    idleCheck.scheduleWithFixedDelay(
+      {
+        // current channel's handshake finish but still message left should be consumed.
+        if (currentChannel != null && !packetQueue.isEmpty() && isHandshakeFinish()) {
+          val packetList = mutableListOf<DatagramPacket>()
+          packetQueue.drainTo(packetList)
+          for (packet in packetList) {
+            executorService.submit<ChannelFuture> {
+              currentChannel!!.writeAndFlush(
+                packet
+              ).sync()
+            }
+          }
+        }
+      },
+      0,
+      200,
+      TimeUnit.MILLISECONDS
+    )
+  }
 
   fun send(data: String) {
-    if (currentChannel == null) {
-      acquireNewChannel()
-    }
-
-    waitForHandshakeFinish()
-
-    if (currentChannel == null) return
-
     val address = InetSocketAddress("255.255.255.255", 2525)
 
     val bytes: ByteArray = try {
@@ -75,33 +99,32 @@ object DtlsNettyClient {
     }
 
     val packet = DatagramPacket(Unpooled.copiedBuffer(bytes), address)
-    currentChannel?.writeAndFlush(packet)
-  }
 
-  private fun acquireNewChannel() {
-    channelPool?.let {
-      val fc = it.acquire()
-      try {
-        currentChannel = fc.get()
-      } catch (e: InterruptedException) {
-        Thread.currentThread().interrupt()
-      }
-    }
-  }
-
-  private fun waitForHandshakeFinish() {
-    if (currentChannel == null) {
-      val timeout = Date().time + 10_000L
-      try {
-        while (currentChannel == null && Date().time < timeout) {
-          TimeUnit.SECONDS.sleep(1)
-          if (currentChannel != null) {
-            break
+    if (currentChannel != null) {
+      executorService.submit { currentChannel?.writeAndFlush(packet) }
+    } else {
+      if (atomicInit.compareAndSet(false, true)) {
+        channelPool?.acquire()?.addListener(FutureListener { future ->
+          if (future.isSuccess) {
+            val ch = future.now
+            currentChannel = ch
+            ch.pipeline().fireChannelActive()
+            executorService.submit { ch.writeAndFlush(packet) }
           }
-        }
-      } catch (e: InterruptedException) {
-        Thread.currentThread().interrupt()
+        })
+      } else {
+        packetQueue.add(packet)
       }
     }
+  }
+
+  private fun isHandshakeFinish(): Boolean {
+    if (currentChannel != null) {
+      val currentClient = connections[currentChannel!!.id()]
+      if (currentClient != null) {
+        return currentClient.isHandshakeComplete()
+      }
+    }
+    return false
   }
 }
