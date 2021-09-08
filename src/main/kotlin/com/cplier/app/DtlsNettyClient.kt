@@ -19,8 +19,10 @@ import io.netty.util.CharsetUtil
 import io.netty.util.concurrent.FutureListener
 import org.bouncycastle.util.encoders.Hex
 import java.net.InetSocketAddress
-import java.util.*
-import java.util.concurrent.*
+import java.util.concurrent.BlockingQueue
+import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 object DtlsNettyClient {
@@ -108,7 +110,6 @@ object DtlsNettyClient {
           if (future.isSuccess) {
             val ch = future.now
             currentChannel = ch
-            ch.pipeline().fireChannelActive()
             executorService.submit { ch.writeAndFlush(packet) }
           }
         })
