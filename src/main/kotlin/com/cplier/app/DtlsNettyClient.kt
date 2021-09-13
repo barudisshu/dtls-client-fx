@@ -73,7 +73,7 @@ object DtlsNettyClient {
     idleCheck.scheduleWithFixedDelay(
       {
         // current channel's handshake finish but still message left should be consumed.
-        if (currentChannel != null && !packetQueue.isEmpty() && isHandshakeFinish()) {
+        if (currentChannel != null && atomicInit.get() && !packetQueue.isEmpty() && isHandshakeFinish()) {
           val packetList = mutableListOf<DatagramPacket>()
           packetQueue.drainTo(packetList)
           for (packet in packetList) {
@@ -102,7 +102,7 @@ object DtlsNettyClient {
 
     val packet = DatagramPacket(Unpooled.copiedBuffer(bytes), address)
 
-    if (currentChannel != null) {
+    if (currentChannel != null && atomicInit.get()) {
       executorService.submit { currentChannel?.writeAndFlush(packet) }
     } else {
       if (atomicInit.compareAndSet(false, true)) {
@@ -110,7 +110,7 @@ object DtlsNettyClient {
           if (future.isSuccess) {
             val ch = future.now
             currentChannel = ch
-            executorService.submit { ch.writeAndFlush(packet) }
+            packetQueue.add(packet)
           }
         })
       } else {
@@ -120,7 +120,7 @@ object DtlsNettyClient {
   }
 
   private fun isHandshakeFinish(): Boolean {
-    if (currentChannel != null) {
+    if (currentChannel != null && atomicInit.get()) {
       val currentClient = connections[currentChannel!!.id()]
       if (currentClient != null) {
         return currentClient.isHandshakeComplete()
