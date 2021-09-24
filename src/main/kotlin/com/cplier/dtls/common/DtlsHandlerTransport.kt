@@ -23,7 +23,7 @@ class DtlsHandlerTransport : DatagramTransport {
 
     init {
       try {
-        mtu = NetworkInterface.getByInetAddress(InetAddress.getLocalHost()).mtu
+        mtu = NetworkInterface.getByInetAddress(InetAddress.getLocalHost()).mtu.coerceAtMost(mtu)
       } catch (ignored: Exception) {
         LOGGER.trace("Exception occurred when getting mtu")
       }

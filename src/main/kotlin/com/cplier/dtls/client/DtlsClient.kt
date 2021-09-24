@@ -8,6 +8,7 @@ import org.bouncycastle.tls.crypto.impl.bc.BcTlsCrypto
 import org.bouncycastle.util.Arrays
 import java.net.InetSocketAddress
 import java.security.SecureRandom
+import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
 
 class DtlsClient(internal val remoteAddress: InetSocketAddress) : DefaultTlsClient(BcTlsCrypto(SecureRandom())) {
@@ -52,6 +53,16 @@ class DtlsClient(internal val remoteAddress: InetSocketAddress) : DefaultTlsClie
 
   override fun shouldUseExtendedPadding(): Boolean {
     return true
+  }
+
+  override fun getClientExtensions(): Hashtable<*, *> {
+    val clientExtensions = TlsExtensionsUtils.ensureExtensionsInitialised(super.getClientExtensions())
+    TlsExtensionsUtils.addEncryptThenMACExtension(clientExtensions)
+    // Enable once code-point assigned (only for compatible server though)
+//    TlsExtensionsUtils.addExtendedMasterSecretExtension(clientExtensions)
+    TlsExtensionsUtils.addMaxFragmentLengthExtension(clientExtensions, MaxFragmentLength.pow2_9)
+    TlsExtensionsUtils.addTruncatedHMacExtension(clientExtensions)
+    return clientExtensions
   }
 
   override fun getAuthentication(): TlsAuthentication {

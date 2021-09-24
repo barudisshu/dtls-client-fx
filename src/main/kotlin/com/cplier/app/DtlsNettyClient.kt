@@ -5,17 +5,16 @@ import com.cplier.dtls.client.DtlsClientHandler
 import io.netty.bootstrap.Bootstrap
 import io.netty.buffer.PooledByteBufAllocator
 import io.netty.buffer.Unpooled
-import io.netty.channel.Channel
-import io.netty.channel.ChannelFuture
-import io.netty.channel.ChannelId
-import io.netty.channel.ChannelOption
+import io.netty.channel.*
 import io.netty.channel.nio.NioEventLoopGroup
 import io.netty.channel.pool.AbstractChannelPoolHandler
 import io.netty.channel.pool.AbstractChannelPoolMap
+import io.netty.channel.pool.ChannelHealthChecker
 import io.netty.channel.pool.SimpleChannelPool
 import io.netty.channel.socket.DatagramPacket
 import io.netty.channel.socket.nio.NioDatagramChannel
 import io.netty.util.CharsetUtil
+import io.netty.util.concurrent.Future
 import io.netty.util.concurrent.FutureListener
 import org.bouncycastle.util.encoders.Hex
 import java.net.InetSocketAddress
@@ -24,6 +23,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 object DtlsNettyClient {
 
@@ -31,16 +31,20 @@ object DtlsNettyClient {
   private var channelPool: SimpleChannelPool? = null
   private var currentChannel: Channel? = null
   private val connections = mutableMapOf<ChannelId?, DtlsClient>()
-  private val group = NioEventLoopGroup()
-  private val bootstrap = Bootstrap()
 
   private val executorService = Executors.newWorkStealingPool()
   private val atomicInit = AtomicBoolean(false)
   private val packetQueue: BlockingQueue<DatagramPacket> = LinkedBlockingQueue()
   private val idleCheck = Executors.newSingleThreadScheduledExecutor()
 
+  private val eventLoopRef = AtomicReference<EventLoopGroup>()
+  private val bootstrapRef = AtomicReference<Bootstrap>()
+
 
   init {
+    val group = NioEventLoopGroup()
+
+    val bootstrap = Bootstrap()
     bootstrap.channel(NioDatagramChannel::class.java)
       .group(group)
       .option(ChannelOption.SO_RCVBUF, 20 * 1024 * 1024)
@@ -55,18 +59,28 @@ object DtlsNettyClient {
 
     poolMap = object : AbstractChannelPoolMap<InetSocketAddress, SimpleChannelPool>() {
       override fun newPool(key: InetSocketAddress?): SimpleChannelPool {
-        return SimpleChannelPool(bootstrap.remoteAddress(address), object : AbstractChannelPoolHandler() {
-          override fun channelCreated(ch: Channel?) {
-            val dtlsClient = DtlsClient(address)
-            ch?.pipeline()?.addLast(DtlsClientHandler(dtlsClient))
-            connections[ch?.id()] = dtlsClient
-          }
-        })
+        return SimpleChannelPool(
+          bootstrap.remoteAddress(address), object : AbstractChannelPoolHandler() {
+            override fun channelCreated(ch: Channel?) {
+              val dtlsClient = DtlsClient(address)
+              ch?.pipeline()?.addLast(DtlsClientHandler(dtlsClient))
+              connections[ch?.id()] = dtlsClient
+            }
+          },
+          ChannelHealthChecker.ACTIVE,
+          true,
+          false
+        )
       }
     }
+
+    eventLoopRef.set(group)
+    bootstrapRef.set(bootstrap)
     channelPool = poolMap?.get(address)
 
     idle()
+
+    Runtime.getRuntime().addShutdownHook(Thread(this::close))
   }
 
   private fun idle() {
@@ -103,7 +117,7 @@ object DtlsNettyClient {
     val packet = DatagramPacket(Unpooled.copiedBuffer(bytes), address)
 
     if (currentChannel != null && atomicInit.get()) {
-      executorService.submit { currentChannel?.writeAndFlush(packet) }
+      executorService.submit { currentChannel?.writeAndFlush(packet)?.sync() }
     } else {
       if (atomicInit.compareAndSet(false, true)) {
         channelPool?.acquire()?.addListener(FutureListener { future ->
@@ -119,6 +133,38 @@ object DtlsNettyClient {
     }
   }
 
+  fun releaseCurrentConnection() {
+    if (currentChannel != null && atomicInit.get()) {
+      channelPool
+        ?.release(currentChannel)
+        ?.addListener { r: Future<in Void?> ->
+          if (r.isSuccess) {
+            currentChannel!!
+              .disconnect()
+              .addListener { d: Future<in Void?> ->
+                if (d.isSuccess) {
+                  currentChannel!!
+                    .deregister()
+                    .addListener { dr: Future<in Void?> ->
+                      if (dr.isSuccess) {
+                        currentChannel!!
+                          .close()
+                          .addListener { c: Future<in Void?> ->
+                            if (c.isSuccess) {
+                              connections.remove(currentChannel!!.id())
+                              atomicInit.compareAndSet(true, false)
+                            }
+                          }
+                      }
+                    }
+                }
+              }
+          }
+        }
+    }
+  }
+
+
   private fun isHandshakeFinish(): Boolean {
     if (currentChannel != null && atomicInit.get()) {
       val currentClient = connections[currentChannel!!.id()]
@@ -127,5 +173,16 @@ object DtlsNettyClient {
       }
     }
     return false
+  }
+
+  fun close() {
+    releaseCurrentConnection()
+    poolMap?.close()
+    connections.clear()
+    eventLoopRef.get().shutdownGracefully()
+    bootstrapRef.get().clone()
+    idleCheck.shutdown()
+    executorService.shutdown()
+
   }
 }
